@@ -6,7 +6,9 @@ import express from "express"
 import ejs from "ejs";
 import bodyParser from "body-parser";
 import mongoose from "mongoose";
-import encrypt from "mongoose-encryption";
+import bcrypt from "bcrypt";
+const saltRounds=8;
+
 
 
 
@@ -27,7 +29,7 @@ const userSchema=new mongoose.Schema({
 });
 
 
-userSchema.plugin(encrypt,{secret:process.env.SECRET,encryptedFields:["password"]});
+
 
 const User=new mongoose.model("User",userSchema)
 
@@ -45,9 +47,10 @@ app.get("/register",(req,res)=>{
 })
 
 app.post("/register",async(req,res)=>{
-    const newUser=new User({
+    bcrypt.hash(req.body.password, saltRounds,async function(err, hash) {
+   const newUser=new User({
         email:req.body.username,
-        password:req.body.password
+        password:hash
     });
     try {
         await newUser.save();
@@ -57,6 +60,8 @@ app.post("/register",async(req,res)=>{
         res.status(500).send("Error occurred while saving the user.");
       }
 });
+    
+});
 
 app.post("/login", async (req, res) => {
     const username = req.body.username;
@@ -65,15 +70,11 @@ app.post("/login", async (req, res) => {
     try{
         const foundUser=await User.findOne({email:username});
         if (foundUser) {
-            console.log("User found in the database.");
-        if(foundUser&&foundUser.password===password){
-            console.log("success");
-            res.render("secrets");
-        }else{
-            console.log("failed");
-            res.send("invalid username or password");
-        } 
-            res.send("Invalid username or password.");
+       bcrypt.compare(password, foundUser.password, function(err, result) {
+    if(result===true){
+        res.render("secrets");
+    }
+});
           }else {
             console.log("User not found.");
             res.send("Invalid username or password.");
