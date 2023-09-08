@@ -6,8 +6,10 @@ import express from "express"
 import ejs from "ejs";
 import bodyParser from "body-parser";
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
-const saltRounds=8;
+import session from "express-session";
+import passport from "passport";
+import passportLocalMongoose from "passport-local-mongoose";
+
 
 
 
@@ -21,6 +23,15 @@ app.use(express.static("public"));
 app.set ("view engine","ejs");
 app.use(bodyParser.urlencoded({extended:true}));
 
+app.use(session({
+    secret:"little secret",
+    resave:false,
+    saveUninitialized:false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
 mongoose.connect("mongodb+srv://hironmoychowdhury69:Hironmoy123@cluster0.xcwjm9t.mongodb.net/",{useNewUrlParser:true});
 
 const userSchema=new mongoose.Schema({
@@ -28,10 +39,14 @@ const userSchema=new mongoose.Schema({
     password:String
 });
 
-
+userSchema.plugin(passportLocalMongoose);
 
 
 const User=new mongoose.model("User",userSchema)
+passport.use(User.createStrategy());
+
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 
 app.get("/",(req,res)=>{
@@ -44,48 +59,54 @@ app.get("/login",(req,res)=>{
 
 app.get("/register",(req,res)=>{
     res.render("register");
-})
-
-app.post("/register",async(req,res)=>{
-    bcrypt.hash(req.body.password, saltRounds,async function(err, hash) {
-   const newUser=new User({
-        email:req.body.username,
-        password:hash
-    });
-    try {
-        await newUser.save();
-        res.render("secrets");
-      } catch (error) {
-        console.error("An error occurred while saving the user: " + error.message);
-        res.status(500).send("Error occurred while saving the user.");
-      }
 });
-    
+
+app.get("/secrets",function(req,res){
+if(req.isAuthenticated()){
+    res.render("secrets");
+}else{
+    res.redirect("/login");
+}
+});
+
+app.post("/register", async (req, res) => {
+    User.register(new User({ username: req.body.username }), req.body.password, function (err, user) {
+        if (err) {
+            console.error(err);
+            res.redirect("/register");
+        } else {
+            passport.authenticate("local")(req, res, function () {
+                res.redirect("/secrets");
+            });
+        }
+    });
 });
 
 app.post("/login", async (req, res) => {
-    const username = req.body.username;
-    const password = req.body.password;
-
-    try{
-        const foundUser=await User.findOne({email:username});
-        if (foundUser) {
-       bcrypt.compare(password, foundUser.password, function(err, result) {
-    if(result===true){
-        res.render("secrets");
+    const user=new User({
+        username:req.body.username,
+        password:req.body.password
+    });
+req.login(user,function(err){
+    if(err){
+        console.log(err);
+    }else{
+        passport.authenticate("local")(req,res,function(){
+            res.redirect("/secrets");
+        })
     }
+})
 });
-          }else {
-            console.log("User not found.");
-            res.send("Invalid username or password.");
-    }
-    
-      }catch(error){
-        console.error("an error occurred"+error.message);
-        res.status(500).send("Error occurred while saving the user.");
-    }
 
+app.get("/logout", function (req, res) {
+    req.logout(function (err) {
+        if (err) {
+            console.error(err);
+        }
+        res.redirect("/");
+    });
 });
+
 
 
 app.listen(3000,()=>{
